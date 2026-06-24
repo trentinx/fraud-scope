@@ -46,3 +46,35 @@ def compute_fraud_metrics(model, X_test: pd.DataFrame, y_test: pd.Series, y_pred
 
     return {"recall": recall, "auprc": auprc, "precision_curve": precision, "recall_curve": rec_curve}
 
+
+def evaluate_with_timeseries_split(X: pd.DataFrame, y: pd.Series, n_splits: int = 5) -> pd.DataFrame:
+    """Évalue une régression logistique avec TimeSeriesSplit.
+
+    Les données doivent être triées par ordre temporel AVANT l'appel.
+    Retourne un DataFrame avec accuracy, recall et AUPRC par fold.
+    """
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+
+    pipe = Pipeline([
+        ("scaler", StandardScaler()),
+        ("model", LogisticRegression(max_iter=1000, solver="saga")),
+    ])
+
+    results = []
+    for fold, (train_idx, test_idx) in enumerate(tscv.split(X), 1):
+        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+        y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+
+        pipe.fit(X_train, y_train)
+        y_pred = pipe.predict(X_test)
+        y_proba = pipe.predict_proba(X_test)[:, 1]
+
+        acc = accuracy_score(y_test, y_pred)
+        rec = recall_score(y_test, y_pred)
+        prec_curve, rec_curve, _ = precision_recall_curve(y_test, y_proba)
+        auprc = auc(rec_curve, prec_curve)
+
+        results.append({"fold": fold, "accuracy": acc, "recall": rec, "auprc": auprc})
+
+    return pd.DataFrame(results)
+
