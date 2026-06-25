@@ -1,6 +1,7 @@
 """Fonctions utilitaires pour l'analyse exploratoire du dataset IEEE Fraud Detection."""
 
 import pandas as pd
+import numpy as np
 
 
 def load_train_data(data_dir: str = "data") -> pd.DataFrame:
@@ -38,6 +39,26 @@ def check_client_proxy(df: pd.DataFrame, key_cols: list[str], check_col: str = "
         "median_tx": tx_per_group.median(),
         "max_tx": tx_per_group.max(),
     }
+
+
+def get_cols_to_drop(corr_matrix: pd.DataFrame, corr_target: pd.Series, threshold: float) -> set:
+    """Retourne les colonnes à supprimer pour un seuil de corrélation donné.
+
+    Pour chaque paire avec |corr| > threshold, supprime la colonne
+    la moins corrélée avec la target.
+    """
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape, dtype=bool), k=1))
+    to_drop = set()
+    for col in upper.columns:
+        for idx in upper.index:
+            val = upper.loc[idx, col]
+            if pd.notna(val) and abs(val) > threshold:
+                if idx not in to_drop and col not in to_drop:
+                    if corr_target.get(idx, 0) >= corr_target.get(col, 0):
+                        to_drop.add(col)
+                    else:
+                        to_drop.add(idx)
+    return to_drop
 
 
 def add_time_features(df: pd.DataFrame) -> pd.DataFrame:

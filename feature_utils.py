@@ -3,6 +3,8 @@
 import pandas as pd
 import numpy as np
 
+from eda_utils import get_cols_to_drop
+
 CLIENT_COL = "uid"
 
 
@@ -56,6 +58,34 @@ def add_velocity_features(df: pd.DataFrame) -> pd.DataFrame:
     df[velocity_cols] = df[velocity_cols].fillna(0)
 
     return df.copy()
+
+
+# --- Suppression des corrélations ---
+
+def drop_correlated(df: pd.DataFrame, target: str = "isFraud", threshold: float = 0.95) -> pd.DataFrame:
+    """Supprime les colonnes numériques corrélées > threshold entre elles.
+
+    Pour chaque paire, garde celle qui corrèle le plus avec la target.
+    """
+    numeric = df.select_dtypes(include=[np.number]).drop(columns=[target], errors="ignore")
+    corr_matrix = numeric.corr()
+    corr_target = numeric.corrwith(df[target]).abs()
+
+    to_drop = get_cols_to_drop(corr_matrix, corr_target, threshold)
+    return df.drop(columns=to_drop)
+
+
+# --- Encodage des catégorielles ---
+
+def encode_categoricals(df: pd.DataFrame) -> pd.DataFrame:
+    """Encode les colonnes string en entiers (Label Encoding).
+
+    Les NaN sont conservés pour que XGBoost les gère nativement.
+    """
+    df = df.copy()
+    for col in df.select_dtypes(include=["object", "string"]).columns:
+        df[col] = df[col].astype("category").cat.codes.replace(-1, np.nan)
+    return df
 
 
 # --- Features de déviation comportementale ---
