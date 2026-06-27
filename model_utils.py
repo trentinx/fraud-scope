@@ -1,12 +1,18 @@
 """Fonctions de modélisation pour le dataset IEEE Fraud Detection."""
 
+import time
+
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split, TimeSeriesSplit
-from sklearn.metrics import accuracy_score, recall_score, precision_recall_curve, auc
+from sklearn.metrics import (
+    accuracy_score, recall_score, f1_score,
+    precision_recall_curve, auc, average_precision_score,
+)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from xgboost import XGBClassifier
 
 
 def prepare_features(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
@@ -75,6 +81,42 @@ def evaluate_with_timeseries_split(X: pd.DataFrame, y: pd.Series, n_splits: int 
         auprc = auc(rec_curve, prec_curve)
 
         results.append({"fold": fold, "accuracy": acc, "recall": rec, "auprc": auprc})
+
+    return pd.DataFrame(results)
+
+
+def evaluate_xgb(X: pd.DataFrame, y: pd.Series, label: str, n_splits: int = 5) -> pd.DataFrame:
+    """Évalue un XGBoost avec TimeSeriesSplit et scale_pos_weight automatique.
+
+    Les données doivent être triées par ordre temporel AVANT l'appel.
+    Retourne un DataFrame avec AUPRC, recall, F1 et temps par fold.
+    """
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+    results = []
+
+    for fold, (train_idx, test_idx) in enumerate(tscv.split(X), 1):
+        X_tr, X_te = X.iloc[train_idx], X.iloc[test_idx]
+        y_tr, y_te = y.iloc[train_idx], y.iloc[test_idx]
+
+        ratio = (y_tr == 0).sum() / max((y_tr == 1).sum(), 1)
+        model = XGBClassifier(
+            n_estimators=200, max_depth=6, learning_rate=0.1,
+            scale_pos_weight=ratio, eval_metric="aucpr",
+            random_state=42, verbosity=0,
+        )
+        start = time.time()
+        model.fit(X_tr, y_tr)
+        train_time = time.time() - start
+
+        y_proba = model.predict_proba(X_te)[:, 1]
+        y_pred = (y_proba >= 0.5).astype(int)
+        results.append({
+            "fold": fold,
+            "auprc": average_precision_score(y_te, y_proba),
+            "recall": recall_score(y_te, y_pred),
+            "f1": f1_score(y_te, y_pred),
+            "temps (s)": round(train_time, 2),
+        })
 
     return pd.DataFrame(results)
 
