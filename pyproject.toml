@@ -23,4 +23,8 @@ dependencies = [
     "torch>=2.12.1",
     "torch-geometric>=2.8.0",
     "xgboost>=3.3.0",
+    "python-dotenv>=1.2.2",
+    "shap>=0.52.0",
+    "evidently>=0.4.36",
+    "numpy>=2.1",
 ]
